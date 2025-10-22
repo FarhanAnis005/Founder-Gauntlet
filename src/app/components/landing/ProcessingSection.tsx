@@ -159,7 +159,7 @@ export default function ProcessingSection() {
             {processingSteps.map((text, i) => (
               <p
                 key={text}
-                ref={(el) => (textRefs.current[i] = el)}
+                ref={(el) => { textRefs.current[i] = el; }}
                 className="absolute inset-0 text-lg sm:text-xl md:text-2xl text-main-text font-medium opacity-0"
               >
                 {text}
