@@ -125,7 +125,7 @@ export default function ChooseInvestorSection() {
           Step 2: Choose Your Judge
         </h2>
         <p className="mt-4 max-w-2xl mx-auto text-lg sm:text-xl text-body-text">
-          Our AI simulates the mindset of different investor archetypes. See who you're pitching to.
+          Our AI simulates the mindset of different investor archetypes. See who you&apos;re pitching to.
         </p>
       </div>
 
