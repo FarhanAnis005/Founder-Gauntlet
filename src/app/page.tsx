@@ -1,9 +1,9 @@
 // File: frontend/src/app/page.tsx
-import HeroSection from './components/landing/HeroSection';
-import UploadVisionSection from './components/landing/UploadVisionSection';
-import ProcessingSection from './components/landing/ProcessingSection';
-import ChooseInvestorSection from './components/landing/ChooseInvestorSection'; // <-- 1. Import it
-import CrossExaminationSection from './components/landing/CrossExaminationSection'; // <-- 1. Import it
+import HeroSection from "@/components/landing/HeroSection";
+import UploadVisionSection from "@/components/landing/UploadVisionSection";
+import ProcessingSection from "@/components/landing/ProcessingSection";
+import ChooseInvestorSection from "@/components/landing/ChooseInvestorSection";
+import CrossExaminationSection from "@/components/landing/CrossExaminationSection";
 
 export default function HomePage() {
   return (
@@ -12,7 +12,7 @@ export default function HomePage() {
       <UploadVisionSection />
       <ProcessingSection />
       <ChooseInvestorSection />
-      <CrossExaminationSection /> 
+      <CrossExaminationSection />
     </main>
   );
 }

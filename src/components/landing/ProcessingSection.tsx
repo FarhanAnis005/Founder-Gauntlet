@@ -1,7 +1,7 @@
 // File: frontend/src/components/landing/ProcessingSection.tsx
 'use client';
 
-import { useLayoutEffect, useRef, useState, useEffect } from 'react';
+import { useLayoutEffect, useRef, useState, useEffect, useMemo } from 'react'; // Import useMemo
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
@@ -21,18 +21,19 @@ export default function ProcessingSection() {
     return () => window.removeEventListener('resize', setStep);
   }, []);
 
-  const processingSteps = [
+  // FIX 1: Wrap processingSteps in useMemo to prevent re-creation on each render.
+  const processingSteps = useMemo(() => [
     'Deconstructing your deck...',
     'Analyzing market size & TAM...',
     'Evaluating revenue model & projections...',
     'Identifying key risks & weaknesses...',
-    'Simulating the investor gauntlet...', // ← (typo fixed: "gauntlet")
-  ];
+    'Simulating the investor gauntlet...',
+  ], []);
 
   useLayoutEffect(() => {
     const ctx = gsap.context(() => {
       const layers = gsap.utils.toArray<HTMLElement>('.processing-layer');
-      const stepCount = Math.min(processingSteps.length, layers.length); // steps mapped to visible layers
+      const stepCount = Math.min(processingSteps.length, layers.length);
 
       // Reset
       textRefs.current.forEach((el, i) => gsap.set(el, { autoAlpha: i === 0 ? 1 : 0 }));
@@ -46,7 +47,6 @@ export default function ProcessingSection() {
           start: 'top top',
           end: 'bottom bottom',
           scrub: 1.2,
-          // snap slices: each step + final CTA slice
           snap: (value) => {
             const snaps = stepCount + 1;
             return Math.round(value * snaps) / snaps;
@@ -72,30 +72,22 @@ export default function ProcessingSection() {
           const totalSlices = stepCount + 1;
           const sliceSize = 1 / totalSlices;
 
-          // Which text slice are we in?
           const activeIdx = Math.min(stepCount - 1, Math.floor(p * totalSlices));
-
-          // Are we in the final CTA slice?
           const inCTA = p >= stepCount * sliceSize;
 
-          // Fade-out buffer near the end of the last text slice (prevents overlap)
-          // When within the last 25% of the final text slice, fade the text out.
-          const lastSliceStart = (stepCount - 1) * sliceSize;
+          // FIX 2: Removed the unused 'lastSliceStart' variable.
           const lastSliceEnd = stepCount * sliceSize;
           const fadeWindowStart = lastSliceEnd - sliceSize * 0.25;
           const inFadeWindow = p >= fadeWindowStart && p < lastSliceEnd;
 
           if (inCTA) {
-            // CTA visible, all texts hidden
             textRefs.current.forEach((el) => el && gsap.to(el, { autoAlpha: 0, duration: 0.2 }));
             gsap.to('.cta-text', { autoAlpha: 1, duration: 0.35 });
-            lastIndexRef.current = -1; // reset so we can re-enter cleanly if user scrolls back
+            lastIndexRef.current = -1;
             return;
           }
 
-          // Not in CTA; show the correct line
           if (activeIdx !== lastIndexRef.current) {
-            // swap texts
             const prev = lastIndexRef.current;
             const nextEl = textRefs.current[activeIdx];
             const prevEl = prev >= 0 ? textRefs.current[prev] : null;
@@ -105,14 +97,12 @@ export default function ProcessingSection() {
             lastIndexRef.current = activeIdx;
           }
 
-          // Handle fade-out of the final line before CTA begins
           if (inFadeWindow && lastIndexRef.current === stepCount - 1) {
-            const t = (p - fadeWindowStart) / (lastSliceEnd - fadeWindowStart); // 0..1
+            const t = (p - fadeWindowStart) / (lastSliceEnd - fadeWindowStart);
             const curEl = textRefs.current[stepCount - 1];
             if (curEl) gsap.to(curEl, { autoAlpha: 1 - t, duration: 0.1, overwrite: true });
           }
 
-          // Ensure CTA stays hidden outside its slice
           gsap.to('.cta-text', { autoAlpha: 0, duration: 0.2 });
         },
       });

@@ -1,0 +1,276 @@
+// File: src/app/final-walk/[pitchId]/page.tsx
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs';
+import ProcessingTunnel, { ProcessingTunnelHandle } from '@/components/final-walk/ProcessingTunnel';
+import { CheckCircle2, Loader2, Mic } from 'lucide-react';
+
+// Ensure MOCK interceptor is installed in dev when NEXT_PUBLIC_USE_MOCK=1
+import '@/utils/api';
+
+type DeckState = 'processing' | 'ready' | 'failed';
+type PermState = 'idle' | 'prompt' | 'granted' | 'denied';
+
+export default function FinalWalkWithDeck() {
+  const { pitchId } = useParams<{ pitchId: string }>();
+  const persona = useSearchParams().get('persona') ?? 'mark';
+
+  const router = useRouter();
+  const { getToken } = useAuth();
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+  const template = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? 'fastapi';
+
+  const tunnelRef = useRef<ProcessingTunnelHandle | null>(null);
+
+  const [micPerm, setMicPerm] = useState<PermState>('idle');
+  const [requestingMic, setRequestingMic] = useState(false);
+  const micStreamRef = useRef<MediaStream | null>(null);
+
+  const [deck, setDeck] = useState<DeckState>('processing');
+
+  // Single evolving status line
+  const [statusTitle, setStatusTitle] = useState('Loading…');
+  const [statusSub, setStatusSub] = useState<string | undefined>(undefined);
+  const [statusIcon, setStatusIcon] = useState<'spinner' | 'check' | 'mic-error'>('spinner');
+
+  const canRoute = useMemo(
+    () => micPerm === 'granted' && deck === 'ready',
+    [micPerm, deck]
+  );
+
+  const navigatedRef = useRef(false);
+  const pollTimerRef = useRef<number | null>(null);
+  const readyRef = useRef(false);
+  const afterMicRef = useRef(false);
+  const finalRef = useRef(false);
+
+  function stopTracks() {
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+  }
+
+  // Tunnel ready → start intro beat, then move to mic
+  const handleTunnelReady = () => {
+    if (readyRef.current) return;
+    readyRef.current = true;
+
+    tunnelRef.current?.playIntro();
+    setStatusTitle('Sending your deck…');
+    setStatusSub(undefined);
+    setStatusIcon('spinner');
+
+    setTimeout(() => {
+      setStatusTitle('Enable microphone to continue.');
+      setStatusSub('Tap “Enable microphone” if prompted.');
+      setStatusIcon('spinner');
+      tryRequestMic();
+    }, 600);
+  };
+
+  // Mic request with user-gesture fallback
+  const tryRequestMic = async () => {
+    if (requestingMic || micPerm === 'granted') return;
+    setRequestingMic(true);
+    try {
+      setMicPerm('prompt');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      micStreamRef.current = stream;
+      setMicPerm('granted');
+
+      setStatusTitle('Mic granted ✓');
+      setStatusSub(undefined);
+      setStatusIcon('check');
+
+      if (!afterMicRef.current) {
+        afterMicRef.current = true;
+        tunnelRef.current?.playAfterMic();
+      }
+
+      setTimeout(() => {
+        setStatusTitle('Analyzing your deck…');
+        setStatusSub('OCR · Summarizing · Scoring risks');
+        setStatusIcon('spinner');
+        startPolling();
+      }, 450);
+    } catch {
+      setMicPerm('denied');
+      setStatusTitle('Microphone blocked');
+      setStatusSub('Please allow mic access and try again.');
+      setStatusIcon('mic-error');
+    } finally {
+      setRequestingMic(false);
+    }
+  };
+
+  // Poll /status (mock or real). Attach Authorization only if token exists.
+  const startPolling = () => {
+    if (pollTimerRef.current) return;
+
+    const poll = async () => {
+      try {
+        let headers: HeadersInit | undefined = undefined;
+        const token = await getToken({ template }).catch(() => null);
+        if (token) headers = { Authorization: `Bearer ${token}` };
+
+        const res = await fetch(
+          `${apiBase}/api/pitches/${encodeURIComponent(pitchId)}/status`,
+          { headers }
+        );
+        if (!res.ok) return;
+
+        const json = await res.json();
+        const st = (json.status as string) ?? 'processing';
+
+        if (st === 'ready') {
+          setDeck('ready');
+
+          setStatusTitle('Boardroom is ready.');
+          setStatusSub(undefined);
+          setStatusIcon('check');
+
+          setTimeout(() => {
+            setStatusTitle('You’re on — take a breath.');
+            setStatusSub(undefined);
+            setStatusIcon('check');
+
+            if (!finalRef.current) {
+              finalRef.current = true;
+              tunnelRef.current?.showFinal();
+
+              // Anticipation: short hold before routing
+              setTimeout(() => {
+                if (!navigatedRef.current && canRoute) {
+                  navigatedRef.current = true;
+                  stopTracks();
+                  router.replace(
+                    `/boardroom?persona=${encodeURIComponent(persona)}&pitchId=${encodeURIComponent(pitchId)}`
+                  );
+                }
+              }, 1100);
+            }
+          }, 500);
+
+          if (pollTimerRef.current) {
+            window.clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+          }
+        } else if (st === 'failed') {
+          setDeck('failed');
+          stopTracks();
+          router.replace('/onboarding?err=analysis_failed');
+        } else {
+          setDeck('processing');
+        }
+      } catch {
+        // swallow transient errors in dev/mock
+      }
+    };
+
+    poll(); // immediate first poll
+    pollTimerRef.current = window.setInterval(poll, 1400);
+  };
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) window.clearInterval(pollTimerRef.current);
+      stopTracks();
+    };
+  }, []);
+
+  return (
+    <main
+      className="min-h-screen w-full bg-primary-bg"
+      style={{
+        backgroundImage:
+          'radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px)',
+        backgroundSize: '24px 24px',
+      }}
+    >
+      <ProcessingTunnel
+        ref={tunnelRef}
+        onReady={handleTunnelReady}
+        onComplete={() => {
+          // In case anticipation fallback runs first, guard routing
+          if (!navigatedRef.current && canRoute) {
+            navigatedRef.current = true;
+            stopTracks();
+            router.replace(
+              `/boardroom?persona=${encodeURIComponent(persona)}&pitchId=${encodeURIComponent(pitchId)}`
+            );
+          }
+        }}
+      />
+
+      {/* Single evolving status line */}
+      <div className="absolute inset-x-0 bottom-0 pb-10 pointer-events-none">
+        <div className="mx-auto max-w-3xl px-6">
+          <StatusRow
+            title={statusTitle}
+            sub={statusSub}
+            icon={
+              statusIcon === 'check' ? 'check' :
+              statusIcon === 'mic-error' ? 'mic-error' : 'spinner'
+            }
+            onAction={
+              (statusIcon === 'mic-error' || statusTitle.startsWith('Enable microphone'))
+                ? () => tryRequestMic()
+                : undefined
+            }
+            actionLabel={
+              (statusIcon === 'mic-error' || statusTitle.startsWith('Enable microphone'))
+                ? (requestingMic ? 'Requesting…' : 'Enable microphone')
+                : undefined
+            }
+          />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function StatusRow({
+  title,
+  sub,
+  icon,
+  onAction,
+  actionLabel,
+}: {
+  title: string;
+  sub?: string;
+  icon: 'spinner' | 'check' | 'mic-error';
+  onAction?: () => void;
+  actionLabel?: string;
+}) {
+  return (
+    <div
+      className="pointer-events-auto rounded-xl border px-4 py-3 backdrop-blur
+                 flex items-center gap-3 border-glass-border bg-glass-bg"
+    >
+      <div className="w-6 h-6 flex items-center justify-center shrink-0">
+        {icon === 'check' ? (
+          <CheckCircle2 className="h-5 w-5 text-green-400" />
+        ) : icon === 'mic-error' ? (
+          <Mic className="h-5 w-5 text-red-400" />
+        ) : (
+          <Loader2 className="h-5 w-5 animate-spin text-accent" />
+        )}
+      </div>
+
+      <div className="flex-1">
+        <div className="text-main-text text-sm font-medium">{title}</div>
+        {sub && <div className="text-body-text/80 text-xs mt-0.5">{sub}</div>}
+      </div>
+
+      {onAction && (
+        <button
+          onClick={onAction}
+          className="pointer-events-auto px-3 py-1.5 rounded-md bg-surface-bg text-body-text text-xs border border-glass-border hover:bg-primary-bg transition"
+        >
+          {actionLabel ?? 'Retry'}
+        </button>
+      )}
+    </div>
+  );
+}

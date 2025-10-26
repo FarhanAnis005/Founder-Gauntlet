@@ -1,4 +1,4 @@
-// File: frontend/middleware.ts (Corrected)
+// File: frontend/middleware.ts 
 
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 

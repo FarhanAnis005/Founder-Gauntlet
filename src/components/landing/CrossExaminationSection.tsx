@@ -5,22 +5,6 @@ import { motion } from 'framer-motion';
 import { Mic } from 'lucide-react';
 import { SignInButton } from '@clerk/nextjs'; // <-- 1. Import Clerk's SignInButton
 
-// Animation variants for the text elements to stagger in (no changes here)
-const textContainerVariants = {
-    hidden: {},
-    visible: {
-        transition: {
-            staggerChildren: 0.15,
-            delayChildren: 0.3,
-        },
-    },
-};
-
-const textItemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } },
-};
-
 export default function CrossExaminationSection() {
     return (
         <section 
